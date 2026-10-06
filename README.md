@@ -12,6 +12,8 @@ Form trigger for n8n protected by Microsoft Entra ID sign-in (OIDC auth code + P
 ## n8n setup
 Create a **Microsoft SSO Form API** credential (tenant GUID, client ID/secret, 32+ char session secret). Set `WEBHOOK_URL` to your public HTTPS URL. Add the node, configure fields and Access Control (domain / group object IDs).
 
+Password reset: with **Enable Password Reset** on, the signed-in page shows the user's email, a "Reset password" link (new + confirm password), and Sign out. Saving outputs `{ action: 'passwordReset', newPassword, submittedAt, user }` to the next node. The password is plain text in the execution data, so apply it immediately (e.g. Graph `PATCH /users/{id}` with `passwordProfile`) and consider disabling "Save successful executions" for that workflow.
+
 Output: submitted fields plus `submittedAt` and `user` `{oid,name,email,tenantId,groups}`.
 
 ## Install

@@ -139,14 +139,14 @@ class MicrosoftSsoForm {
                     httpMethod: 'GET',
                     responseMode: 'onReceived',
                     path: '={{$parameter["path"]}}',
-                    isFullPath: false,
+                    isFullPath: true,
                 },
                 {
                     name: 'default',
                     httpMethod: 'POST',
                     responseMode: 'onReceived',
                     path: '={{$parameter["path"]}}',
-                    isFullPath: false,
+                    isFullPath: true,
                 },
             ],
             properties: [
@@ -456,30 +456,72 @@ class MicrosoftSsoForm {
             return redirect(authUrl, [cookie(LOGIN_COOKIE, loginCookie, cookiePath, 600)]);
         }
         const fields = this.getNodeParameter('formFields.values', []) ?? [];
-        // ---- GET form: render ----
+        const resetEnabled = this.getNodeParameter('enablePasswordReset', true);
+        const minLen = this.getNodeParameter('minPasswordLength', 8);
+        const blank = (f) => !f.fieldLabel && !f.fieldName && f.fieldType !== 'html';
+        const header = (links) => `<div class="who"><strong>Signed in as ${esc(session.email)}</strong>${session.name ? ` (${esc(session.name)})` : ''}<br>${links}</div>`;
+        // ---- GET: sign out / reset page / form ----
         if (req.method === 'GET') {
+            if (q.action === 'logout')
+                return redirect(formUrl, [cookie(SESSION_COOKIE, '', cookiePath, 0)]);
+            if (resetEnabled && q.action === 'reset') {
+                return send(200, page('Reset password', `<h1>Reset password</h1>${header(`<a href="${esc(formUrl)}">Back</a> · <a href="${esc(formUrl)}?action=logout">Sign out</a>`)}
+<form method="POST" action="${esc(formUrl)}">
+<input type="hidden" name="_csrf" value="${esc(session.csrf)}">
+<input type="hidden" name="_action" value="passwordReset">
+<label>New password *</label><input type="password" name="newPassword" minlength="${minLen}" autocomplete="new-password" required>
+<label>Confirm password *</label><input type="password" name="confirmPassword" minlength="${minLen}" autocomplete="new-password" required>
+<button type="submit">Save</button></form>`));
+            }
             const title = this.getNodeParameter('formTitle', '');
             const desc = this.getNodeParameter('formDescription', '');
             const button = this.getNodeParameter('buttonLabel', 'Submit');
             const hasFile = fields.some((f) => f.fieldType === 'file');
-            return send(200, page(title, `<h1>${esc(title)}</h1><div class="who">Signed in as ${esc(session.name)} (${esc(session.email)})</div>
-<p>${esc(desc)}</p>
-<form method="POST" action="${esc(formUrl)}"${hasFile ? ' enctype="multipart/form-data"' : ''}>
+            const visible = fields.map((f, i) => (blank(f) ? '' : renderField(f, i))).join('\n');
+            const links = (resetEnabled ? `<a href="${esc(formUrl)}?action=reset">Reset password</a> · ` : '') +
+                `<a href="${esc(formUrl)}?action=logout">Sign out</a>`;
+            const formHtml = visible.trim()
+                ? `<form method="POST" action="${esc(formUrl)}"${hasFile ? ' enctype="multipart/form-data"' : ''}>
 <input type="hidden" name="_csrf" value="${esc(session.csrf)}">
-${fields.map(renderField).join('\n')}
-<button type="submit">${esc(button)}</button></form>`));
+${visible}
+<button type="submit">${esc(button)}</button></form>`
+                : '';
+            return send(200, page(title, `<h1>${esc(title)}</h1>${header(links)}<p>${esc(desc)}</p>${formHtml}`));
         }
         // ---- POST: submit ----
         const body = (req.body ?? {});
         const data = (body.data && typeof body.data === 'object' ? body.data : body);
         if (data._csrf !== session.csrf)
             return denied('Invalid form token. Reload the form and try again.');
+        const userInfo = {
+            oid: session.oid,
+            name: session.name,
+            email: session.email,
+            tenantId: session.tenantId,
+            groups: session.groups,
+        };
+        if (data._action === 'passwordReset') {
+            if (!resetEnabled)
+                return denied('Password reset is not enabled.');
+            const newPassword = String(data.newPassword ?? '');
+            if (newPassword.length < minLen)
+                return denied(`Password must be at least ${minLen} characters.`);
+            if (newPassword !== String(data.confirmPassword ?? ''))
+                return denied('Passwords do not match.');
+            send(200, page('Password saved', `<h1>Password saved</h1><p>Your password reset request was submitted.</p>`));
+            return {
+                noWebhookResponse: true,
+                workflowData: [
+                    [{ json: { action: 'passwordReset', newPassword, submittedAt: new Date().toISOString(), user: userInfo } }],
+                ],
+            };
+        }
         const json = {};
         const binary = {};
         const reqFiles = (req.files ?? body.files ?? {});
         for (let i = 0; i < fields.length; i++) {
             const f = fields[i];
-            if (f.fieldType === 'html')
+            if (f.fieldType === 'html' || blank(f))
                 continue;
             const key = inputName(i);
             const outKey = outputKey(f, i);
@@ -505,13 +547,8 @@ ${fields.map(renderField).join('\n')}
             json[outKey] = value ?? null;
         }
         json.submittedAt = new Date().toISOString();
-        json.user = {
-            oid: session.oid,
-            name: session.name,
-            email: session.email,
-            tenantId: session.tenantId,
-            groups: session.groups,
-        };
+        json.action = 'form';
+        json.user = userInfo;
         const message = this.getNodeParameter('completionMessage', '');
         send(200, page('Submitted', `<h1>Thank you</h1><p>${esc(message)}</p>`));
         const item = { json };
