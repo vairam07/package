@@ -1,16 +1,29 @@
 {
   "name": "n8n-nodes-microsoft-sso-form",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "n8n form trigger node protected by Microsoft Entra ID single sign-on, with optional group restriction",
   "license": "MIT",
-  "keywords": ["n8n-community-node-package", "microsoft", "entra", "sso", "form"],
+  "keywords": [
+    "n8n-community-node-package",
+    "microsoft",
+    "entra",
+    "sso",
+    "form"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && cp nodes/MicrosoftSsoForm/*.svg dist/nodes/MicrosoftSsoForm/",
     "prepublishOnly": "npm run build"
   },
-  "files": ["dist", "README.md"],
-  "engines": { "node": ">=18.17" },
-  "dependencies": { "jose": "^5.9.6" },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "n8n-workflow": "^1.0.0",
@@ -18,7 +31,11 @@
   },
   "n8n": {
     "n8nNodesApiVersion": 1,
-    "credentials": ["dist/credentials/MicrosoftSsoFormApi.credentials.js"],
-    "nodes": ["dist/nodes/MicrosoftSsoForm/MicrosoftSsoForm.node.js"]
+    "credentials": [
+      "dist/credentials/MicrosoftSsoFormApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/MicrosoftSsoForm/MicrosoftSsoForm.node.js"
+    ]
   }
 }
