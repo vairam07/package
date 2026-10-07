@@ -365,20 +365,32 @@ class MicrosoftSsoForm {
             const login = verify(cookies[LOGIN_COOKIE], creds.sessionSecret);
             if (!login || !q.code || q.state !== login.state)
                 return denied('Invalid or expired sign-in attempt. Please retry.');
-            const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    client_id: creds.clientId,
-                    client_secret: creds.clientSecret,
-                    grant_type: 'authorization_code',
-                    code: q.code,
-                    redirect_uri: callbackUrl,
-                    code_verifier: login.verifier,
-                    scope: SCOPES,
-                }),
-            });
-            const tokens = (await tokenRes.json());
+            let tokenRes;
+            try {
+                tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: creds.clientId,
+                        client_secret: creds.clientSecret,
+                        grant_type: 'authorization_code',
+                        code: q.code,
+                        redirect_uri: callbackUrl,
+                        code_verifier: login.verifier,
+                        scope: SCOPES,
+                    }),
+                });
+            }
+            catch (e) {
+                return denied(`Token exchange request failed: ${e.message}`);
+            }
+            let tokens;
+            try {
+                tokens = (await tokenRes.json());
+            }
+            catch (e) {
+                return denied(`Token exchange returned an invalid response (HTTP ${tokenRes.status}).`);
+            }
             if (!tokenRes.ok || !tokens.id_token)
                 return denied(`Token exchange failed: ${tokens.error_description ?? tokenRes.status}`);
             let claims;

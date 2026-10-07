@@ -430,20 +430,30 @@ export class MicrosoftSsoForm implements INodeType {
 			);
 			if (!login || !q.code || q.state !== login.state) return denied('Invalid or expired sign-in attempt. Please retry.');
 
-			const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: new URLSearchParams({
-					client_id: creds.clientId,
-					client_secret: creds.clientSecret,
-					grant_type: 'authorization_code',
-					code: q.code,
-					redirect_uri: callbackUrl,
-					code_verifier: login.verifier,
-					scope: SCOPES,
+			let tokenRes: Response;
+			try {
+					tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: new URLSearchParams({
+						client_id: creds.clientId,
+						client_secret: creds.clientSecret,
+						grant_type: 'authorization_code',
+						code: q.code,
+						redirect_uri: callbackUrl,
+						code_verifier: login.verifier,
+						scope: SCOPES,
 				}),
 			});
-			const tokens = (await tokenRes.json()) as { id_token?: string; access_token?: string; error_description?: string };
+			} catch (e) {
+				return denied(`Token exchange request failed: ${(e as Error).message}`);
+			}
+			let tokens: { id_token?: string; access_token?: string; error_description?: string };
+			try {
+				tokens = (await tokenRes.json()) as typeof tokens;
+			} catch (e) {
+				return denied(`Token exchange returned an invalid response (HTTP ${tokenRes.status}).`);
+			}
 			if (!tokenRes.ok || !tokens.id_token) return denied(`Token exchange failed: ${tokens.error_description ?? tokenRes.status}`);
 
 			let claims: Record<string, any>;
