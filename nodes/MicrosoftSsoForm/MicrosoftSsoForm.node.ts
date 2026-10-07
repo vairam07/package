@@ -446,7 +446,8 @@ export class MicrosoftSsoForm implements INodeType {
 				}),
 			});
 			} catch (e) {
-				return denied(`Token exchange request failed: ${(e as Error).message}`);
+				const cause = (e as { cause?: { code?: string; message?: string } }).cause;
+					return denied(`Token exchange request failed: ${(e as Error).message}${cause ? ` (${cause.code ?? ''} ${cause.message ?? ''})` : ''}`);
 			}
 			let tokens: { id_token?: string; access_token?: string; error_description?: string };
 			try {

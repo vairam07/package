@@ -382,7 +382,8 @@ class MicrosoftSsoForm {
                 });
             }
             catch (e) {
-                return denied(`Token exchange request failed: ${e.message}`);
+                const cause = e.cause;
+                return denied(`Token exchange request failed: ${e.message}${cause ? ` (${cause.code ?? ''} ${cause.message ?? ''})` : ''}`);
             }
             let tokens;
             try {
