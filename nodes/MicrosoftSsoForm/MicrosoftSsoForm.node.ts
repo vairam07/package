@@ -1,6 +1,7 @@
 import {
 	IBinaryKeyData,
 	IDataObject,
+	IHttpRequestOptions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
@@ -9,7 +10,7 @@ import {
 	NodeOperationError,
 } from 'n8n-workflow';
 import crypto from 'crypto';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from 'jose';
 
 const LOGIN_COOKIE = 'msf_login';
 const SESSION_COOKIE = 'msf_session';
@@ -430,10 +431,20 @@ export class MicrosoftSsoForm implements INodeType {
 			);
 			if (!login || !q.code || q.state !== login.state) return denied('Invalid or expired sign-in attempt. Please retry.');
 
-			let tokenRes: Response;
+			// Use n8n's HTTP helper (honours HTTP(S)_PROXY) instead of global fetch.
+			const http = async (opts: IHttpRequestOptions) => {
+				const r = (await this.helpers.httpRequest({ ...opts, returnFullResponse: true, ignoreHttpStatusErrors: true })) as {
+					statusCode: number;
+					body: unknown;
+				};
+				const body = typeof r.body === 'string' ? JSON.parse(r.body) : Buffer.isBuffer(r.body) ? JSON.parse(r.body.toString('utf8')) : r.body;
+				return { ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, body };
+			};
+			let tokenRes: { ok: boolean; status: number; body: unknown };
 			try {
-					tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+				tokenRes = await http({
 					method: 'POST',
+					url: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
 					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 					body: new URLSearchParams({
 						client_id: creds.clientId,
@@ -443,24 +454,18 @@ export class MicrosoftSsoForm implements INodeType {
 						redirect_uri: callbackUrl,
 						code_verifier: login.verifier,
 						scope: SCOPES,
-				}),
-			});
+					}).toString(),
+				});
 			} catch (e) {
-				const cause = (e as { cause?: { code?: string; message?: string } }).cause;
-					return denied(`Token exchange request failed: ${(e as Error).message}${cause ? ` (${cause.code ?? ''} ${cause.message ?? ''})` : ''}`);
+				return denied(`Token exchange request failed: ${(e as Error).message}`);
 			}
-			let tokens: { id_token?: string; access_token?: string; error_description?: string };
-			try {
-				tokens = (await tokenRes.json()) as typeof tokens;
-			} catch (e) {
-				return denied(`Token exchange returned an invalid response (HTTP ${tokenRes.status}).`);
-			}
+			const tokens = tokenRes.body as { id_token?: string; access_token?: string; error_description?: string };
 			if (!tokenRes.ok || !tokens.id_token) return denied(`Token exchange failed: ${tokens.error_description ?? tokenRes.status}`);
 
 			let claims: Record<string, any>;
 			try {
-				const jwks = createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`));
-				const { payload } = await jwtVerify(tokens.id_token, jwks, {
+				const keys = await http({ method: 'GET', url: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys` });
+				const { payload } = await jwtVerify(tokens.id_token, createLocalJWKSet(keys.body as JSONWebKeySet), {
 					issuer: `https://login.microsoftonline.com/${tenantId}/v2.0`,
 					audience: creds.clientId,
 				});
@@ -481,13 +486,19 @@ export class MicrosoftSsoForm implements INodeType {
 				if (overage || !Array.isArray(claims.groups)) {
 					// Too many groups for the token (or groups claim not configured): ask Graph.
 					if (!tokens.access_token) return denied('Unable to verify group membership.');
-					const g = await fetch('https://graph.microsoft.com/v1.0/me/checkMemberGroups', {
-						method: 'POST',
-						headers: { Authorization: `Bearer ${tokens.access_token}`, 'Content-Type': 'application/json' },
-						body: JSON.stringify({ groupIds: allowedGroups }),
-					});
+					let g: { ok: boolean; body: unknown };
+					try {
+						g = await http({
+							method: 'POST',
+							url: 'https://graph.microsoft.com/v1.0/me/checkMemberGroups',
+							headers: { Authorization: `Bearer ${tokens.access_token}`, 'Content-Type': 'application/json' },
+							body: JSON.stringify({ groupIds: allowedGroups }),
+						});
+					} catch {
+						return denied('Unable to verify group membership.');
+					}
 					if (!g.ok) return denied('Unable to verify group membership.');
-					groups = ((await g.json()) as { value: string[] }).value.map((x) => x.toLowerCase());
+					groups = (g.body as { value: string[] }).value.map((x) => x.toLowerCase());
 				}
 				if (!allowedGroups.some((id) => groups.includes(id))) {
 					return denied('You are not a member of a group permitted to use this form.');
