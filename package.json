@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-microsoft-sso-form",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "n8n form trigger node protected by Microsoft Entra ID single sign-on, with optional group restriction",
   "license": "MIT",
   "keywords": [
