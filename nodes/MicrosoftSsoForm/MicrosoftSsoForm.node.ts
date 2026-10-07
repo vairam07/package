@@ -393,7 +393,8 @@ export class MicrosoftSsoForm implements INodeType {
 			.filter(Boolean);
 		const allowedDomain = (access.allowedDomain ?? '').trim().toLowerCase().replace(/^@/, '');
 
-		const formUrl = this.getNodeWebhookUrl('setup') as string;
+		const redirectOverride = ((creds as { redirectUri?: string }).redirectUri ?? '').trim();
+		const formUrl = redirectOverride || (this.getNodeWebhookUrl('setup') as string);
 		const callbackUrl = formUrl;
 		const cookiePath = new URL(formUrl).pathname;
 		const cookies = parseCookies(req.headers.cookie);

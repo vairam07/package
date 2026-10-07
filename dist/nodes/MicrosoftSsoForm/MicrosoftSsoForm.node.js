@@ -331,7 +331,8 @@ class MicrosoftSsoForm {
             .map((g) => g.trim().toLowerCase())
             .filter(Boolean);
         const allowedDomain = (access.allowedDomain ?? '').trim().toLowerCase().replace(/^@/, '');
-        const formUrl = this.getNodeWebhookUrl('setup');
+        const redirectOverride = (creds.redirectUri ?? '').trim();
+        const formUrl = redirectOverride || this.getNodeWebhookUrl('setup');
         const callbackUrl = formUrl;
         const cookiePath = new URL(formUrl).pathname;
         const cookies = parseCookies(req.headers.cookie);

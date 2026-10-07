@@ -29,6 +29,14 @@ export class MicrosoftSsoFormApi implements ICredentialType {
 			required: true,
 		},
 		{
+			displayName: 'Redirect URI',
+			name: 'redirectUri',
+			type: 'string',
+			default: '',
+			placeholder: 'https://n8n-agent.zentropylabs.com/webhook/ms-form',
+			description: 'Optional. Must exactly match a Web redirect URI in the Entra app registration. Defaults to the node\'s form URL.',
+		},
+		{
 			displayName: 'Session Secret',
 			name: 'sessionSecret',
 			type: 'string',
